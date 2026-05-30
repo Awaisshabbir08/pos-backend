@@ -13,7 +13,9 @@ class WaiterController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Waiter::query();
+        $query = Waiter::with('branch');
+
+        $this->applyBranchScope($query, $request);
 
         if ($request->filled('search')) {
             $term = $request->search;
@@ -34,9 +36,20 @@ class WaiterController extends Controller
         ]);
     }
 
+    private function applyBranchScope($query, Request $request): void
+    {
+        $userBranch = $request->user()?->branch_id;
+        if ($userBranch) {
+            $query->where('branch_id', $userBranch);
+        } elseif ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+    }
+
     public function store(StoreWaiterRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $data['branch_id'] = $request->user()?->branch_id ?? ($data['branch_id'] ?? null);
 
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('waiters', 'public');
@@ -47,6 +60,7 @@ class WaiterController extends Controller
         unset($data['remove_image'], $data['remove_cnic_image']);
 
         $waiter = Waiter::create($data);
+        $waiter->load('branch');
 
         return response()->json([
             'success' => true,
@@ -67,6 +81,9 @@ class WaiterController extends Controller
     public function update(StoreWaiterRequest $request, Waiter $waiter): JsonResponse
     {
         $data = $request->validated();
+        if ($request->user()?->branch_id) {
+            $data['branch_id'] = $request->user()->branch_id;
+        }
 
         if ($request->hasFile('image')) {
             if ($waiter->image) Storage::disk('public')->delete($waiter->image);
@@ -87,6 +104,7 @@ class WaiterController extends Controller
         unset($data['remove_image'], $data['remove_cnic_image']);
 
         $waiter->update($data);
+        $waiter->load('branch');
 
         return response()->json([
             'success' => true,

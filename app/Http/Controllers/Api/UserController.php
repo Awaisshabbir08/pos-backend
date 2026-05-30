@@ -14,7 +14,7 @@ class UserController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = User::with('roles');
+        $query = User::with(['roles', 'branch']);
 
         if ($request->filled('search')) {
             $term = $request->search;
@@ -51,10 +51,11 @@ class UserController extends Controller
         $data = $request->validated();
 
         $user = User::create([
-            'name'     => $data['name'],
-            'email'    => $data['email'],
-            'password' => Hash::make($data['password']),
-            'status'   => $data['status'] ?? 'active',
+            'name'      => $data['name'],
+            'email'     => $data['email'],
+            'password'  => Hash::make($data['password']),
+            'branch_id' => $data['branch_id'] ?? null,
+            'status'    => $data['status'] ?? 'active',
         ]);
 
         $user->syncRoles([$data['role']]);
@@ -62,7 +63,7 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User created successfully',
-            'data'    => $this->formatUser($user->fresh('roles')),
+            'data'    => $this->formatUser($user->fresh(['roles', 'branch'])),
         ], 201);
     }
 
@@ -71,7 +72,7 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User retrieved successfully',
-            'data'    => $this->formatUser($user->load('roles')),
+            'data'    => $this->formatUser($user->load(['roles', 'branch'])),
         ]);
     }
 
@@ -79,7 +80,10 @@ class UserController extends Controller
     {
         $data = $request->validated();
 
-        $fields = collect($data)->only(['name', 'email', 'status'])->toArray();
+        $fields = collect($data)->only(['name', 'email', 'status', 'branch_id'])->toArray();
+        if (array_key_exists('branch_id', $data)) {
+            $fields['branch_id'] = $data['branch_id'];
+        }
         if (!empty($data['password'])) {
             $fields['password'] = Hash::make($data['password']);
         }
@@ -93,7 +97,7 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User updated successfully',
-            'data'    => $this->formatUser($user->fresh('roles')),
+            'data'    => $this->formatUser($user->fresh(['roles', 'branch'])),
         ]);
     }
 
@@ -125,6 +129,8 @@ class UserController extends Controller
             'status'     => $user->status,
             'role'       => $user->roles->first()?->name,
             'roles'      => $user->roles->pluck('name'),
+            'branch_id'  => $user->branch_id,
+            'branch'     => $user->branch,
             'created_at' => $user->created_at,
         ];
     }

@@ -23,6 +23,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'waiters'    => ['view', 'create', 'update', 'delete'],
         'tables'     => ['view', 'create', 'update', 'delete'],
         'riders'     => ['view', 'create', 'update', 'delete'],
+        'branches'   => ['view', 'create', 'update', 'delete'],
         'reports'    => ['view'],
     ];
 
@@ -51,6 +52,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'waiters.view',
             'tables.view',
             'riders.view',
+            'branches.view',
         ]);
 
         // Editor: full CRUD on the catalog and customers, no orders/users/roles

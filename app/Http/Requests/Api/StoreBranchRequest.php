@@ -7,24 +7,20 @@ use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\Rule;
 
-class StoreTableRequest extends FormRequest
+class StoreBranchRequest extends FormRequest
 {
     public function authorize(): bool { return true; }
 
     public function rules(): array
     {
-        $tableId = $this->route('table')?->id ?? $this->route('table');
-        $branchId = $this->input('branch_id');
+        $branchId = $this->route('branch')?->id ?? $this->route('branch');
 
         return [
-            'branch_id' => 'nullable|exists:branches,id',
-            'name'      => ['required', 'string', 'max:100',
-                Rule::unique('tables', 'name')->ignore($tableId)
-                    ->where(fn ($q) => $q->where('branch_id', $branchId))
-            ],
-            'capacity'  => 'nullable|integer|min:1|max:99',
-            'location'  => 'nullable|string|max:100',
-            'status'    => 'nullable|in:active,inactive',
+            'name'    => 'required|string|max:255',
+            'city'    => 'nullable|string|max:255',
+            'phone'   => 'nullable|string|max:50',
+            'address' => 'nullable|string',
+            'status'  => 'nullable|in:active,inactive',
         ];
     }
 

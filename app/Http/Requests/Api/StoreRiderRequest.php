@@ -13,6 +13,7 @@ class StoreRiderRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'branch_id'        => 'nullable|exists:branches,id',
             'name'             => 'required|string|max:255',
             'phone'            => 'nullable|string|max:50',
             'vehicle_number'   => 'nullable|string|max:50',

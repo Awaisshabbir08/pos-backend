@@ -16,7 +16,14 @@ class OrderController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Order::with(['customer', 'waiter', 'table', 'rider', 'orderItems.product']);
+        $query = Order::with(['branch', 'customer', 'waiter', 'table', 'rider', 'orderItems.product']);
+
+        $userBranch = $request->user()?->branch_id;
+        if ($userBranch) {
+            $query->where('branch_id', $userBranch);
+        } elseif ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -95,8 +102,10 @@ class OrderController extends Controller
             $changeAmount   = max(0, $paidAmount - $finalTotal);
 
             $serviceType = $request->input('service_type', 'dine_in');
+            $branchId    = $request->user()?->branch_id ?? $request->input('branch_id');
 
             $order = Order::create([
+                'branch_id'       => $branchId,
                 'customer_id'     => $request->input('customer_id'),
                 'waiter_id'       => $serviceType !== 'delivery' ? $request->input('waiter_id') : null,
                 'table_id'        => $serviceType === 'dine_in' ? $request->input('table_id') : null,
@@ -127,7 +136,7 @@ class OrderController extends Controller
 
             DB::commit();
 
-            $order->load(['customer', 'waiter', 'table', 'rider', 'orderItems.product']);
+            $order->load(['branch', 'customer', 'waiter', 'table', 'rider', 'orderItems.product']);
 
             return response()->json([
                 'success' => true,
@@ -148,7 +157,7 @@ class OrderController extends Controller
 
     public function show(Order $order): JsonResponse
     {
-        $order->load(['customer', 'waiter', 'table', 'rider', 'orderItems.product']);
+        $order->load(['branch', 'customer', 'waiter', 'table', 'rider', 'orderItems.product']);
 
         return response()->json([
             'success' => true,
@@ -170,7 +179,7 @@ class OrderController extends Controller
             }
         }
 
-        $order->load(['customer', 'waiter', 'table', 'rider', 'orderItems.product']);
+        $order->load(['branch', 'customer', 'waiter', 'table', 'rider', 'orderItems.product']);
 
         return response()->json([
             'success' => true,

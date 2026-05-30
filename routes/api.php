@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
@@ -115,4 +116,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('permission:riders.create')->post('/riders', [RiderController::class, 'store']);
     Route::middleware('permission:riders.update')->put('/riders/{rider}', [RiderController::class, 'update']);
     Route::middleware('permission:riders.delete')->delete('/riders/{rider}', [RiderController::class, 'destroy']);
+
+    // Branches
+    Route::middleware('permission:branches.view')->group(function () {
+        Route::get('/branches', [BranchController::class, 'index']);
+        Route::get('/branches/{branch}', [BranchController::class, 'show']);
+    });
+    Route::middleware('permission:branches.create')->post('/branches', [BranchController::class, 'store']);
+    Route::middleware('permission:branches.update')->put('/branches/{branch}', [BranchController::class, 'update']);
+    Route::middleware('permission:branches.delete')->delete('/branches/{branch}', [BranchController::class, 'destroy']);
 });

@@ -12,7 +12,8 @@ class TableController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Table::query();
+        $query = Table::with('branch');
+        $this->applyBranchScope($query, $request);
 
         if ($request->filled('search')) {
             $term = $request->search;
@@ -31,9 +32,23 @@ class TableController extends Controller
         ]);
     }
 
+    private function applyBranchScope($query, Request $request): void
+    {
+        $userBranch = $request->user()?->branch_id;
+        if ($userBranch) {
+            $query->where('branch_id', $userBranch);
+        } elseif ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+    }
+
     public function store(StoreTableRequest $request): JsonResponse
     {
-        $table = Table::create($request->validated());
+        $data = $request->validated();
+        $data['branch_id'] = $request->user()?->branch_id ?? ($data['branch_id'] ?? null);
+
+        $table = Table::create($data);
+        $table->load('branch');
 
         return response()->json([
             'success' => true,
@@ -53,7 +68,12 @@ class TableController extends Controller
 
     public function update(StoreTableRequest $request, Table $table): JsonResponse
     {
-        $table->update($request->validated());
+        $data = $request->validated();
+        if ($request->user()?->branch_id) {
+            $data['branch_id'] = $request->user()->branch_id;
+        }
+        $table->update($data);
+        $table->load('branch');
 
         return response()->json([
             'success' => true,

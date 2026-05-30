@@ -13,7 +13,8 @@ class RiderController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Rider::query();
+        $query = Rider::with('branch');
+        $this->applyBranchScope($query, $request);
 
         if ($request->filled('search')) {
             $term = $request->search;
@@ -35,9 +36,20 @@ class RiderController extends Controller
         ]);
     }
 
+    private function applyBranchScope($query, Request $request): void
+    {
+        $userBranch = $request->user()?->branch_id;
+        if ($userBranch) {
+            $query->where('branch_id', $userBranch);
+        } elseif ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+    }
+
     public function store(StoreRiderRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $data['branch_id'] = $request->user()?->branch_id ?? ($data['branch_id'] ?? null);
 
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('riders', 'public');
@@ -48,6 +60,7 @@ class RiderController extends Controller
         unset($data['remove_image'], $data['remove_cnic_image']);
 
         $rider = Rider::create($data);
+        $rider->load('branch');
 
         return response()->json([
             'success' => true,
@@ -68,6 +81,9 @@ class RiderController extends Controller
     public function update(StoreRiderRequest $request, Rider $rider): JsonResponse
     {
         $data = $request->validated();
+        if ($request->user()?->branch_id) {
+            $data['branch_id'] = $request->user()->branch_id;
+        }
 
         if ($request->hasFile('image')) {
             if ($rider->image) Storage::disk('public')->delete($rider->image);
@@ -88,6 +104,7 @@ class RiderController extends Controller
         unset($data['remove_image'], $data['remove_cnic_image']);
 
         $rider->update($data);
+        $rider->load('branch');
 
         return response()->json([
             'success' => true,

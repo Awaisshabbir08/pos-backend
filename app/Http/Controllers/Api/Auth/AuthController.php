@@ -36,16 +36,19 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('api-token')->plainTextToken;
+        $user->load('branch');
 
         return response()->json([
             'success' => true,
             'message' => 'Login successful',
             'data'    => [
                 'user'        => [
-                    'id'     => $user->id,
-                    'name'   => $user->name,
-                    'email'  => $user->email,
-                    'status' => $user->status,
+                    'id'        => $user->id,
+                    'name'      => $user->name,
+                    'email'     => $user->email,
+                    'status'    => $user->status,
+                    'branch_id' => $user->branch_id,
+                    'branch'    => $user->branch,
                 ],
                 'token'       => $token,
                 'roles'       => $user->getRoleNames(),
@@ -69,6 +72,7 @@ class AuthController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $user->load('branch');
 
         return response()->json([
             'success' => true,
@@ -78,6 +82,8 @@ class AuthController extends Controller
                 'name'        => $user->name,
                 'email'       => $user->email,
                 'status'      => $user->status,
+                'branch_id'   => $user->branch_id,
+                'branch'      => $user->branch,
                 'roles'       => $user->getRoleNames(),
                 'permissions' => $user->getAllPermissions()->pluck('name'),
             ],

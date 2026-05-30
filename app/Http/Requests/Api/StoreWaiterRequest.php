@@ -13,6 +13,7 @@ class StoreWaiterRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'branch_id'        => 'nullable|exists:branches,id',
             'name'             => 'required|string|max:255',
             'phone'            => 'nullable|string|max:50',
             'email'            => 'nullable|email|max:255',
