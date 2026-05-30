@@ -1,0 +1,2 @@
+CREATE DATABASE IF NOT EXISTS pos_db;
+USE pos_db;
