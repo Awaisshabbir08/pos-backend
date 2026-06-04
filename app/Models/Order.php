@@ -9,9 +9,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
-    use HasFactory;
+    use HasFactory, \App\Models\Concerns\BelongsToTenant;
 
     protected $fillable = [
+        'tenant_id',
         'branch_id',
         'customer_id',
         'waiter_id',

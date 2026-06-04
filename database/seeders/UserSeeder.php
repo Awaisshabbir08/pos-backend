@@ -6,41 +6,51 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
+/**
+ * Seeds only the platform-level super-admin. Per-tenant users are created
+ * via the Tenants admin flow (each tenant gets its own admin/cashier/editor).
+ */
 class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        // Admin
-        $admin = User::firstOrCreate(
-            ['email' => 'admin@pos.com'],
+        $super = User::firstOrCreate(
+            ['email' => 'super@pos.com'],
             [
-                'name'     => 'Admin User',
-                'password' => Hash::make('password'),
-                'status'   => 'active',
+                'name'      => 'Super Admin',
+                'password'  => Hash::make('password'),
+                'status'    => 'active',
+                'tenant_id' => null,
             ]
         );
-        $admin->syncRoles(['admin']);
+        $super->syncRoles(['super-admin']);
 
-        // Cashier
-        $cashier = User::firstOrCreate(
-            ['email' => 'cashier@pos.com'],
-            [
-                'name'     => 'John Cashier',
-                'password' => Hash::make('password'),
-                'status'   => 'active',
-            ]
-        );
-        $cashier->syncRoles(['cashier']);
+        // Demo cashier + editor under the Default Store tenant, for trying
+        // tenant-scoped permissions against the legacy demo data.
+        $defaultStoreId = \DB::table('tenants')->where('slug', 'default-store')->value('id');
 
-        // Editor
-        $editor = User::firstOrCreate(
-            ['email' => 'editor@pos.com'],
-            [
-                'name'     => 'Jane Editor',
-                'password' => Hash::make('password'),
-                'status'   => 'active',
-            ]
-        );
-        $editor->syncRoles(['editor']);
+        if ($defaultStoreId) {
+            $cashier = User::firstOrCreate(
+                ['email' => 'cashier@pos.com'],
+                [
+                    'name'      => 'Demo Cashier',
+                    'password'  => Hash::make('password'),
+                    'status'    => 'active',
+                    'tenant_id' => $defaultStoreId,
+                ]
+            );
+            $cashier->syncRoles(['cashier']);
+
+            $editor = User::firstOrCreate(
+                ['email' => 'editor@pos.com'],
+                [
+                    'name'      => 'Demo Editor',
+                    'password'  => Hash::make('password'),
+                    'status'    => 'active',
+                    'tenant_id' => $defaultStoreId,
+                ]
+            );
+            $editor->syncRoles(['editor']);
+        }
     }
 }

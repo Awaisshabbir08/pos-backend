@@ -2,15 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Branch extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToTenant;
 
-    protected $fillable = ['name', 'city', 'phone', 'address', 'status'];
+    protected $fillable = ['tenant_id', 'name', 'city', 'phone', 'address', 'status'];
 
     public function waiters(): HasMany { return $this->hasMany(Waiter::class); }
     public function riders(): HasMany  { return $this->hasMany(Rider::class); }

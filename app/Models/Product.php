@@ -11,9 +11,10 @@ use Illuminate\Support\Facades\Storage;
 
 class Product extends Model
 {
-    use HasFactory;
+    use HasFactory, \App\Models\Concerns\BelongsToTenant;
 
     protected $fillable = [
+        'tenant_id',
         'category_id',
         'name',
         'sku',

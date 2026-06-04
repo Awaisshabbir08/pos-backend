@@ -9,9 +9,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Table extends Model
 {
-    use HasFactory;
+    use HasFactory, \App\Models\Concerns\BelongsToTenant;
 
-    protected $fillable = ['branch_id', 'name', 'capacity', 'location', 'status'];
+    protected $fillable = ['tenant_id', 'branch_id', 'name', 'capacity', 'location', 'status'];
 
     protected $casts = [
         'capacity' => 'integer',

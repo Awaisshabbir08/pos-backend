@@ -11,10 +11,10 @@ use Illuminate\Support\Facades\Storage;
 
 class Rider extends Model
 {
-    use HasFactory;
+    use HasFactory, \App\Models\Concerns\BelongsToTenant;
 
     protected $fillable = [
-        'branch_id', 'name', 'phone', 'vehicle_number', 'image', 'cnic_number', 'cnic_image', 'status',
+        'tenant_id', 'branch_id', 'name', 'phone', 'vehicle_number', 'image', 'cnic_number', 'cnic_image', 'status',
     ];
 
     protected $appends = ['image_url', 'cnic_image_url'];

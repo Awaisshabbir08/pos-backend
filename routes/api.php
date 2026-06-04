@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RiderController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\TableController;
+use App\Http\Controllers\Api\TenantController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WaiterController;
 use Illuminate\Support\Facades\Route;
@@ -24,8 +25,8 @@ use Illuminate\Support\Facades\Route;
 // Public routes
 Route::post('/auth/login', [AuthController::class, 'login']);
 
-// Protected routes (require sanctum auth)
-Route::middleware('auth:sanctum')->group(function () {
+// Protected routes (require sanctum auth + tenant context)
+Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Auth
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -116,6 +117,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('permission:riders.create')->post('/riders', [RiderController::class, 'store']);
     Route::middleware('permission:riders.update')->put('/riders/{rider}', [RiderController::class, 'update']);
     Route::middleware('permission:riders.delete')->delete('/riders/{rider}', [RiderController::class, 'destroy']);
+
+    // Tenants (super-admin only — tenants.* permissions are granted only to super-admin role)
+    Route::middleware('permission:tenants.view')->group(function () {
+        Route::get('/tenants', [TenantController::class, 'index']);
+        Route::get('/tenants/{tenant}', [TenantController::class, 'show']);
+    });
+    Route::middleware('permission:tenants.create')->post('/tenants', [TenantController::class, 'store']);
+    Route::middleware('permission:tenants.update')->group(function () {
+        Route::put('/tenants/{tenant}', [TenantController::class, 'update']);
+        Route::post('/tenants/{tenant}/toggle-status', [TenantController::class, 'toggleStatus']);
+    });
+    Route::middleware('permission:tenants.delete')->delete('/tenants/{tenant}', [TenantController::class, 'destroy']);
 
     // Branches
     Route::middleware('permission:branches.view')->group(function () {
