@@ -25,7 +25,18 @@ class RolesAndPermissionsSeeder extends Seeder
         'riders'     => ['view', 'create', 'update', 'delete'],
         'branches'   => ['view', 'create', 'update', 'delete'],
         'tenants'    => ['view', 'create', 'update', 'delete'],
-        'reports'    => ['view'],
+        'reports'    => ['view', 'export'],
+        'cash'       => ['view', 'open', 'close'],
+        'audit'      => ['view'],
+        'coupons'         => ['view', 'create', 'update', 'delete'],
+        'modifiers'       => ['view', 'create', 'update', 'delete'],
+        'delivery_zones'  => ['view', 'create', 'update', 'delete'],
+        'suppliers'       => ['view', 'create', 'update', 'delete'],
+        'purchase_orders' => ['view', 'create', 'update', 'delete', 'receive'],
+        'time_entries'    => ['view', 'create'],
+        'fbr'             => ['view', 'retry'],
+        'payroll'         => ['view', 'create', 'update', 'delete', 'pay'],
+        'stock_adjustments' => ['view', 'create'],
     ];
 
     public function run(): void
@@ -54,10 +65,20 @@ class RolesAndPermissionsSeeder extends Seeder
             'customers.create',
             'orders.view',
             'orders.create',
+            'orders.update',
             'waiters.view',
             'tables.view',
             'riders.view',
             'branches.view',
+            'cash.view', 'cash.open', 'cash.close',
+            // Cashier needs to read coupons/modifiers/zones to apply them at POS,
+            // and create/view their own time entries.
+            'coupons.view',
+            'modifiers.view',
+            'delivery_zones.view',
+            'time_entries.view', 'time_entries.create',
+            // Cashier may adjust stock at POS (e.g. spoilage during shift)
+            'stock_adjustments.view', 'stock_adjustments.create',
         ]);
 
         // Editor: full CRUD on the catalog and customers, no orders/users/roles
@@ -67,6 +88,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'customers.view', 'customers.create', 'customers.update', 'customers.delete',
             'reports.view',
+            // Editor manages catalog-adjacent settings: coupons, modifiers, suppliers, POs
+            'coupons.view', 'coupons.create', 'coupons.update', 'coupons.delete',
+            'modifiers.view', 'modifiers.create', 'modifiers.update', 'modifiers.delete',
+            'suppliers.view', 'suppliers.create', 'suppliers.update', 'suppliers.delete',
+            'purchase_orders.view', 'purchase_orders.create', 'purchase_orders.update', 'purchase_orders.receive',
+            // Editor (catalog manager) also manages stock adjustments
+            'stock_adjustments.view', 'stock_adjustments.create',
         ]);
     }
 

@@ -23,9 +23,20 @@ class StoreTenantRequest extends FormRequest
             'contact_email'           => 'nullable|email|max:255',
             'contact_phone'           => 'nullable|string|max:50',
             'plan'                    => 'nullable|in:basic,pro,enterprise',
+            'currency'                => 'nullable|string|size:3|regex:/^[A-Z]{3}$/',
+            'logo'                    => 'nullable|string|max:1000',
+            'receipt_header'          => 'nullable|string|max:1000',
+            'receipt_footer'          => 'nullable|string|max:1000',
             'status'                  => 'nullable|in:active,inactive,trial',
             'subscription_expires_at' => 'nullable|date|after_or_equal:today',
             'notes'                   => 'nullable|string|max:2000',
+
+            // FBR (Pakistan tax integration)
+            'fbr_enabled'             => 'nullable|boolean',
+            'fbr_ntn'                 => 'nullable|string|max:50',
+            'fbr_pos_id'              => 'nullable|string|max:50',
+            'fbr_token'               => 'nullable|string|max:4000',
+            'fbr_endpoint'            => 'nullable|url|max:255',
 
             // Initial admin (only on create when create_admin = true)
             'create_admin'            => 'sometimes|boolean',

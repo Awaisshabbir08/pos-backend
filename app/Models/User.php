@@ -23,6 +23,9 @@ class User extends Authenticatable
         'email',
         'password',
         'status',
+        'pay_type',
+        'hourly_rate',
+        'monthly_salary',
     ];
 
     public function isSuperAdmin(): bool
@@ -33,13 +36,18 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
+            'email_verified_at'         => 'datetime',
+            'password'                  => 'hashed',
+            'two_factor_confirmed_at'   => 'datetime',
+            'hourly_rate'               => 'decimal:2',
+            'monthly_salary'            => 'decimal:2',
         ];
     }
 

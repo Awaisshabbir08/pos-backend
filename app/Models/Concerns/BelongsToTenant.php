@@ -32,10 +32,23 @@ trait BelongsToTenant
             }
         });
 
-        // Auto-stamp tenant_id on insert
+        // Auto-stamp tenant_id on insert. Super-admin without a tenant picked
+        // would otherwise create orphan rows (legacy tables with nullable tenant_id)
+        // or 500 with an SQL integrity error (newer tables that are NOT NULL).
+        // Reject the create cleanly with a 422 instead.
         static::creating(function ($model) {
             if (!$model->tenant_id) {
-                $model->tenant_id = TenantContext::id();
+                $tenantId = TenantContext::id();
+                if ($tenantId === null && TenantContext::isSuperAdmin()) {
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                        response()->json([
+                            'success' => false,
+                            'message' => 'Pick a tenant first. Super-admin must scope to a specific tenant before creating ' . class_basename($model) . ' records — add ?tenant_id={id} to the request URL.',
+                            'data'    => null,
+                        ], 422)
+                    );
+                }
+                $model->tenant_id = $tenantId;
             }
         });
     }

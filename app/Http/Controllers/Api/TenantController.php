@@ -4,8 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreTenantRequest;
+use App\Models\Branch;
+use App\Models\Customer;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Product;
+use App\Models\Rider;
+use App\Models\Table;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Models\Waiter;
+use App\Support\Audit;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -136,6 +145,9 @@ class TenantController extends Controller
 
         if ($tenant->status === 'inactive') {
             $this->revokeTenantTokens($tenant);
+            Audit::log('tenant.disable', $tenant);
+        } else {
+            Audit::log('tenant.enable', $tenant);
         }
 
         return response()->json([
@@ -148,7 +160,20 @@ class TenantController extends Controller
     public function destroy(Tenant $tenant): JsonResponse
     {
         $this->revokeTenantTokens($tenant);
-        $tenant->delete();
+        Audit::log('tenant.delete', $tenant, ['name' => $tenant->name]);
+
+        try {
+            $tenant->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if (str_contains($e->getMessage(), 'foreign key constraint')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tenant cannot be deleted because it still has linked records (orders, cash registers, etc.). Reset its demo data or remove dependent records first.',
+                    'data'    => null,
+                ], 422);
+            }
+            throw $e;
+        }
 
         return response()->json([
             'success' => true,
@@ -166,6 +191,36 @@ class TenantController extends Controller
             $slug = $base . '-' . (++$i);
         }
         return $slug;
+    }
+
+    /**
+     * Demo reset — wipes all sales data for a tenant so super-admin can rerun a clean demo.
+     * Keeps the tenant, branches, users, products, customers; deletes only orders + cash registers.
+     */
+    public function resetDemo(Tenant $tenant): JsonResponse
+    {
+        // Allow this only for the Default Store sandbox to prevent client-data accidents.
+        if ($tenant->slug !== 'default-store') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Demo reset is only allowed on the Default Store tenant.',
+                'data'    => null,
+            ], 422);
+        }
+
+        OrderItem::allTenants()->whereIn('order_id',
+            Order::allTenants()->where('tenant_id', $tenant->id)->pluck('id')
+        )->delete();
+        Order::allTenants()->where('tenant_id', $tenant->id)->delete();
+        \App\Models\CashRegister::allTenants()->where('tenant_id', $tenant->id)->delete();
+
+        Audit::log('tenant.demo_reset', $tenant);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Demo data reset for {$tenant->name}. All orders and cash registers cleared.",
+            'data'    => null,
+        ]);
     }
 
     private function revokeTenantTokens(Tenant $tenant): void

@@ -13,12 +13,17 @@ class Tenant extends Model
 
     protected $fillable = [
         'name', 'slug', 'contact_email', 'contact_phone',
-        'plan', 'status', 'subscription_expires_at', 'notes',
+        'plan', 'currency', 'status', 'subscription_expires_at', 'notes',
+        'logo', 'receipt_header', 'receipt_footer',
+        'fbr_enabled', 'fbr_ntn', 'fbr_pos_id', 'fbr_token', 'fbr_endpoint',
     ];
 
     protected $casts = [
         'subscription_expires_at' => 'date',
+        'fbr_enabled'             => 'boolean',
     ];
+
+    protected $hidden = ['fbr_token'];
 
     public function users(): HasMany     { return $this->hasMany(User::class); }
     public function branches(): HasMany  { return $this->hasMany(Branch::class); }

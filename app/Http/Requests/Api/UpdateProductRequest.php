@@ -27,6 +27,7 @@ class UpdateProductRequest extends FormRequest
             'remove_image'   => 'nullable|boolean',
             'price'          => 'sometimes|required|numeric|min:0',
             'stock_quantity' => 'nullable|integer|min:0',
+            'reorder_point'  => 'nullable|integer|min:0',
             'status'         => 'nullable|in:active,inactive',
         ];
     }

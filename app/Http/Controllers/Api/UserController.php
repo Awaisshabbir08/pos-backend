@@ -51,11 +51,14 @@ class UserController extends Controller
         $data = $request->validated();
 
         $user = User::create([
-            'name'      => $data['name'],
-            'email'     => $data['email'],
-            'password'  => Hash::make($data['password']),
-            'branch_id' => $data['branch_id'] ?? null,
-            'status'    => $data['status'] ?? 'active',
+            'name'           => $data['name'],
+            'email'          => $data['email'],
+            'password'       => Hash::make($data['password']),
+            'branch_id'      => $data['branch_id'] ?? null,
+            'status'         => $data['status'] ?? 'active',
+            'pay_type'       => $data['pay_type'] ?? 'none',
+            'hourly_rate'    => $data['hourly_rate'] ?? null,
+            'monthly_salary' => $data['monthly_salary'] ?? null,
         ]);
 
         $user->syncRoles([$data['role']]);
@@ -80,7 +83,7 @@ class UserController extends Controller
     {
         $data = $request->validated();
 
-        $fields = collect($data)->only(['name', 'email', 'status', 'branch_id'])->toArray();
+        $fields = collect($data)->only(['name', 'email', 'status', 'branch_id', 'pay_type', 'hourly_rate', 'monthly_salary'])->toArray();
         if (array_key_exists('branch_id', $data)) {
             $fields['branch_id'] = $data['branch_id'];
         }
@@ -123,15 +126,18 @@ class UserController extends Controller
     private function formatUser(User $user): array
     {
         return [
-            'id'         => $user->id,
-            'name'       => $user->name,
-            'email'      => $user->email,
-            'status'     => $user->status,
-            'role'       => $user->roles->first()?->name,
-            'roles'      => $user->roles->pluck('name'),
-            'branch_id'  => $user->branch_id,
-            'branch'     => $user->branch,
-            'created_at' => $user->created_at,
+            'id'             => $user->id,
+            'name'           => $user->name,
+            'email'          => $user->email,
+            'status'         => $user->status,
+            'role'           => $user->roles->first()?->name,
+            'roles'          => $user->roles->pluck('name'),
+            'branch_id'      => $user->branch_id,
+            'branch'         => $user->branch,
+            'pay_type'       => $user->pay_type,
+            'hourly_rate'    => $user->hourly_rate,
+            'monthly_salary' => $user->monthly_salary,
+            'created_at'     => $user->created_at,
         ];
     }
 }

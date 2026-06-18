@@ -22,6 +22,9 @@ class StoreUserRequest extends FormRequest
             'role'      => 'required|string|exists:roles,name',
             'branch_id' => 'nullable|exists:branches,id',
             'status'    => 'nullable|in:active,inactive',
+            'pay_type'       => 'nullable|in:hourly,salary,none',
+            'hourly_rate'    => 'nullable|numeric|min:0',
+            'monthly_salary' => 'nullable|numeric|min:0',
         ];
     }
 
