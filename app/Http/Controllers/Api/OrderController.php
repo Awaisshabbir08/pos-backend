@@ -93,11 +93,14 @@ class OrderController extends Controller
                 $totalAmount += $subtotal;
 
                 $orderItemsData[] = [
-                    'product_id' => $product->id,
-                    'quantity'   => $item['quantity'],
-                    'unit_price' => $unitPriceWithMods,
-                    'subtotal'   => $subtotal,
-                    '_modifiers' => $pickedModifiers, // stripped before insert
+                    'product_id'         => $product->id,
+                    'quantity'           => $item['quantity'],
+                    'unit_price'         => $unitPriceWithMods,
+                    // Snapshot the product's CURRENT cost at sale time, so historical
+                    // COGS / margin reports stay stable when cost changes later.
+                    'unit_cost_at_sale'  => (float) $product->cost_price,
+                    'subtotal'           => $subtotal,
+                    '_modifiers'         => $pickedModifiers, // stripped before insert
                 ];
             }
 
@@ -278,22 +281,43 @@ class OrderController extends Controller
         ]);
     }
 
-    public function destroy(Order $order): JsonResponse
+    public function destroy(\Illuminate\Http\Request $request, Order $order): JsonResponse
     {
-        if (in_array($order->status, ['completed', 'voided', 'refunded'])) {
+        $force = $request->boolean('force');
+
+        // Completed / voided / refunded orders are the financial audit trail.
+        // Refuse normal delete; force=true lets admins wipe a mistake (test order,
+        // duplicate, demo data). On force we also restock if the order had
+        // active stock impact.
+        if (!$force && in_array($order->status, ['completed', 'voided', 'refunded'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot delete a completed/voided/refunded order. Use void or refund instead.',
+                'message' => 'This is a completed/voided/refunded order. Add ?force=true to delete it anyway, or use void/refund to keep the audit trail.',
                 'data'    => null,
             ], 422);
         }
 
-        $order->orderItems()->delete();
-        $order->delete();
+        DB::transaction(function () use ($order, $force) {
+            // If the order is being force-deleted while still active, restore stock so
+            // we don't leak inventory.
+            if ($force && $order->status === 'completed') {
+                $this->restoreStock($order);
+            }
+            // Remove children explicitly so MySQL FK ordering can't cause a 500.
+            \DB::table('order_item_modifiers')->whereIn(
+                'order_item_id', \DB::table('order_items')->where('order_id', $order->id)->pluck('id')
+            )->delete();
+            $order->orderItems()->delete();
+            \DB::table('order_payments')->where('order_id', $order->id)->delete();
+            \DB::table('fbr_submissions')->where('order_id', $order->id)->delete();
+            $order->delete();
+        });
+
+        Audit::log('order.delete', $order, ['force' => $force, 'status' => $order->status]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Order deleted successfully',
+            'message' => $force ? 'Order force-deleted.' : 'Order deleted.',
             'data'    => null,
         ]);
     }

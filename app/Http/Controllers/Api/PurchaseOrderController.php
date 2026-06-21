@@ -72,8 +72,17 @@ class PurchaseOrderController extends Controller
         ]);
     }
 
-    /** Mark a PO as received and increment stock for each line item. */
-    public function receive(PurchaseOrder $purchaseOrder): JsonResponse
+    /**
+     * Mark a PO as received: increment stock per line item AND update each
+     * product's cost_price using a weighted-average formula:
+     *
+     *   new_cost = (current_stock × current_cost + received_qty × po_unit_cost)
+     *              / (current_stock + received_qty)
+     *
+     * When current_stock or current_cost is 0, the PO's unit_cost wins.
+     * Every cost change is logged in product_cost_history with source='po_receive'.
+     */
+    public function receive(\Illuminate\Http\Request $request, PurchaseOrder $purchaseOrder): JsonResponse
     {
         if ($purchaseOrder->status === 'received') {
             return response()->json(['success'=>false,'message'=>'Already received','data'=>null], 422);
@@ -82,14 +91,45 @@ class PurchaseOrderController extends Controller
             return response()->json(['success'=>false,'message'=>'Cannot receive a cancelled PO','data'=>null], 422);
         }
 
-        return DB::transaction(function () use ($purchaseOrder) {
+        return DB::transaction(function () use ($purchaseOrder, $request) {
+            $userId = $request->user()?->id;
             foreach ($purchaseOrder->items as $item) {
                 $product = Product::find($item->product_id);
-                if ($product) $product->incrementStockFor($purchaseOrder->branch_id, (int) $item->quantity);
+                if (!$product) continue;
+
+                $currentStock = (int) $product->stockFor($purchaseOrder->branch_id);
+                $currentCost  = (float) $product->cost_price;
+                $poQty        = (int) $item->quantity;
+                $poCost       = (float) $item->unit_cost;
+
+                // Compute weighted average. If we had no prior stock or no prior
+                // cost, the new cost is just the PO's unit cost.
+                $newCost = ($currentStock <= 0 || $currentCost <= 0)
+                    ? $poCost
+                    : ($currentStock * $currentCost + $poQty * $poCost) / ($currentStock + $poQty);
+                $newCost = round($newCost, 2);
+
+                // Apply stock first
+                $product->incrementStockFor($purchaseOrder->branch_id, $poQty);
+
+                // Then cost — write history if it moved
+                if (abs($newCost - $currentCost) > 0.005) {
+                    \App\Models\ProductCostHistory::create([
+                        'tenant_id'          => $product->tenant_id,
+                        'product_id'         => $product->id,
+                        'previous_cost'      => $currentCost,
+                        'cost_price'         => $newCost,
+                        'source'             => 'po_receive',
+                        'source_id'          => $purchaseOrder->id,
+                        'changed_by_user_id' => $userId,
+                        'notes'              => "Weighted avg from PO {$purchaseOrder->po_number}: prev stock {$currentStock} @ {$currentCost}, received {$poQty} @ {$poCost}",
+                    ]);
+                    $product->forceFill(['cost_price' => $newCost])->save();
+                }
             }
             $purchaseOrder->update(['status' => 'received', 'received_at' => now()]);
             Audit::log('purchase_order.receive', $purchaseOrder);
-            return response()->json(['success'=>true,'message'=>'PO received and stock updated','data'=>$purchaseOrder->fresh(['items.product'])]);
+            return response()->json(['success'=>true,'message'=>'PO received, stock + cost updated','data'=>$purchaseOrder->fresh(['items.product'])]);
         });
     }
 
@@ -101,6 +141,37 @@ class PurchaseOrderController extends Controller
         $purchaseOrder->update(['status' => 'cancelled']);
         Audit::log('purchase_order.cancel', $purchaseOrder);
         return response()->json(['success'=>true,'message'=>'PO cancelled','data'=>$purchaseOrder]);
+    }
+
+    /**
+     * Delete a purchase order.
+     *
+     * - Default (no force): only `draft` and `cancelled` POs are deletable.
+     *   Received POs are refused with 422 because they affected stock.
+     * - `?force=true`: any status. We do NOT reverse the stock change — too risky
+     *   to assume what should happen (refund? write-off?). The audit log keeps
+     *   the trail of the original receive event.
+     */
+    public function destroy(\Illuminate\Http\Request $request, PurchaseOrder $purchaseOrder): JsonResponse
+    {
+        $force = $request->boolean('force');
+
+        if (!$force && $purchaseOrder->status === 'received') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete a received PO (it already affected stock). Add ?force=true to delete anyway — the stock change will NOT be reversed.',
+                'data'    => null,
+            ], 422);
+        }
+
+        \DB::transaction(function () use ($purchaseOrder) {
+            \DB::table('purchase_order_items')->where('purchase_order_id', $purchaseOrder->id)->delete();
+            $purchaseOrder->delete();
+        });
+
+        Audit::log('purchase_order.delete', $purchaseOrder, ['force' => $force, 'final_status' => $purchaseOrder->status]);
+
+        return response()->json(['success'=>true,'message'=>'Purchase order deleted','data'=>null]);
     }
 
     private function generatePoNumber(): string

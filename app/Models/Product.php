@@ -22,6 +22,7 @@ class Product extends Model
         'description',
         'image',
         'price',
+        'cost_price',
         'stock_quantity',
         'reorder_point',
         'status',
@@ -29,6 +30,7 @@ class Product extends Model
 
     protected $casts = [
         'price'          => 'decimal:2',
+        'cost_price'     => 'decimal:2',
         'stock_quantity' => 'integer',
         'reorder_point'  => 'integer',
     ];
@@ -55,6 +57,11 @@ class Product extends Model
     public function modifierGroups(): BelongsToMany
     {
         return $this->belongsToMany(ModifierGroup::class, 'product_modifier_group');
+    }
+
+    public function costHistory(): HasMany
+    {
+        return $this->hasMany(ProductCostHistory::class)->orderByDesc('created_at');
     }
 
     /**

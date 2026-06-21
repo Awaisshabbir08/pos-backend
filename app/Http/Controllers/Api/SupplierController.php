@@ -33,15 +33,34 @@ class SupplierController extends Controller
         return response()->json(['success'=>true,'message'=>'Supplier updated','data'=>$supplier->fresh()]);
     }
 
-    public function destroy(Supplier $supplier): JsonResponse
+    public function destroy(Request $request, Supplier $supplier): JsonResponse
     {
+        $force = $request->boolean('force');
+
+        if ($force) {
+            // Hard cleanup: drop the PO items, the POs, then the supplier.
+            \DB::transaction(function () use ($supplier) {
+                $poIds = \DB::table('purchase_orders')->where('supplier_id', $supplier->id)->pluck('id');
+                if ($poIds->isNotEmpty()) {
+                    \DB::table('purchase_order_items')->whereIn('purchase_order_id', $poIds)->delete();
+                    \DB::table('purchase_orders')->where('supplier_id', $supplier->id)->delete();
+                }
+                $supplier->delete();
+            });
+            return response()->json([
+                'success' => true,
+                'message' => 'Supplier force-deleted; its purchase orders were removed too.',
+                'data'    => null,
+            ]);
+        }
+
         try {
             $supplier->delete();
         } catch (\Illuminate\Database\QueryException $e) {
             if (str_contains($e->getMessage(), 'foreign key constraint')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot delete supplier — it has linked purchase orders. Cancel or archive those first.',
+                    'message' => 'Cannot delete supplier — it has linked purchase orders. Add ?force=true to delete the POs and the supplier together, or cancel/archive the POs first.',
                     'data'    => null,
                 ], 422);
             }

@@ -157,10 +157,72 @@ class TenantController extends Controller
         ]);
     }
 
-    public function destroy(Tenant $tenant): JsonResponse
+    public function destroy(Request $request, Tenant $tenant): JsonResponse
     {
+        $force = $request->boolean('force');
+
         $this->revokeTenantTokens($tenant);
-        Audit::log('tenant.delete', $tenant, ['name' => $tenant->name]);
+        Audit::log($force ? 'tenant.force_delete' : 'tenant.delete', $tenant, ['name' => $tenant->name, 'force' => $force]);
+
+        if ($force) {
+            // Cascade-delete every row that references this tenant. The FK chain
+            // alone can't always handle this — some tables reference users
+            // (CASCADE) and tenants (CASCADE) at the same time, which MySQL
+            // sometimes refuses. Wipe the children manually in dependency order.
+            \DB::transaction(function () use ($tenant) {
+                $tenantId = $tenant->id;
+                // Order matters: leaf tables first.
+                \DB::table('order_payments')->where('tenant_id', $tenantId)->delete();
+                \DB::table('order_item_modifiers')->whereIn(
+                    'order_item_id', \DB::table('order_items')->whereIn(
+                        'order_id', \DB::table('orders')->where('tenant_id', $tenantId)->pluck('id')
+                    )->pluck('id')
+                )->delete();
+                \DB::table('order_items')->whereIn(
+                    'order_id', \DB::table('orders')->where('tenant_id', $tenantId)->pluck('id')
+                )->delete();
+                \DB::table('fbr_submissions')->where('tenant_id', $tenantId)->delete();
+                \DB::table('orders')->where('tenant_id', $tenantId)->delete();
+                \DB::table('cash_registers')->where('tenant_id', $tenantId)->delete();
+                \DB::table('purchase_order_items')->whereIn(
+                    'purchase_order_id', \DB::table('purchase_orders')->where('tenant_id', $tenantId)->pluck('id')
+                )->delete();
+                \DB::table('purchase_orders')->where('tenant_id', $tenantId)->delete();
+                \DB::table('product_modifier_group')->whereIn(
+                    'product_id', \DB::table('products')->where('tenant_id', $tenantId)->pluck('id')
+                )->delete();
+                \DB::table('modifiers')->where('tenant_id', $tenantId)->delete();
+                \DB::table('modifier_groups')->where('tenant_id', $tenantId)->delete();
+                \DB::table('coupons')->where('tenant_id', $tenantId)->delete();
+                \DB::table('delivery_zones')->where('tenant_id', $tenantId)->delete();
+                \DB::table('suppliers')->where('tenant_id', $tenantId)->delete();
+                \DB::table('stock_adjustments')->where('tenant_id', $tenantId)->delete();
+                \DB::table('time_entries')->where('tenant_id', $tenantId)->delete();
+                \DB::table('payslips')->where('tenant_id', $tenantId)->delete();
+                \DB::table('branch_product')->whereIn(
+                    'product_id', \DB::table('products')->where('tenant_id', $tenantId)->pluck('id')
+                )->delete();
+                \DB::table('products')->where('tenant_id', $tenantId)->delete();
+                \DB::table('categories')->where('tenant_id', $tenantId)->delete();
+                \DB::table('customers')->where('tenant_id', $tenantId)->delete();
+                \DB::table('waiters')->where('tenant_id', $tenantId)->delete();
+                \DB::table('tables')->where('tenant_id', $tenantId)->delete();
+                \DB::table('riders')->where('tenant_id', $tenantId)->delete();
+                \DB::table('branches')->where('tenant_id', $tenantId)->delete();
+                // Audit logs: keep but null out the tenant_id (history preserved)
+                \DB::table('audit_logs')->where('tenant_id', $tenantId)->update(['tenant_id' => null]);
+                // Users last
+                \DB::table('users')->where('tenant_id', $tenantId)->delete();
+                // Finally, the tenant itself
+                \DB::table('tenants')->where('id', $tenantId)->delete();
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Tenant and all its data force-deleted.',
+                'data'    => null,
+            ]);
+        }
 
         try {
             $tenant->delete();
@@ -168,7 +230,7 @@ class TenantController extends Controller
             if (str_contains($e->getMessage(), 'foreign key constraint')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tenant cannot be deleted because it still has linked records (orders, cash registers, etc.). Reset its demo data or remove dependent records first.',
+                    'message' => 'Tenant cannot be deleted because it still has linked records (orders, cash registers, etc.). Add ?force=true to wipe everything, or reset demo data first.',
                     'data'    => null,
                 ], 422);
             }

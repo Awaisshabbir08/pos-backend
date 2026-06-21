@@ -65,6 +65,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/products', [ProductController::class, 'index']);
         Route::get('/products/low-stock', [ProductController::class, 'lowStock']);
         Route::get('/products/{product}', [ProductController::class, 'show']);
+        Route::get('/products/{product}/cost-history', [ProductController::class, 'costHistory']);
     });
     Route::middleware('permission:products.create')->group(function () {
         Route::post('/products', [ProductController::class, 'store']);
@@ -225,6 +226,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:purchase_orders.create')->post('/purchase-orders', [PurchaseOrderController::class, 'store']);
     Route::middleware('permission:purchase_orders.update')->post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel']);
     Route::middleware('permission:purchase_orders.receive')->post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive']);
+    Route::middleware('permission:purchase_orders.delete')->delete('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'destroy']);
 
     // Time Entries (clock-in/clock-out for staff)
     Route::middleware('permission:time_entries.view')->group(function () {
@@ -235,6 +237,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/time-entries/clock-in',  [TimeEntryController::class, 'clockIn']);
         Route::post('/time-entries/clock-out', [TimeEntryController::class, 'clockOut']);
     });
+    Route::middleware('permission:time_entries.delete')->delete('/time-entries/{timeEntry}', [TimeEntryController::class, 'destroy']);
 
     // 2FA (any authenticated user manages their own)
     Route::get('/auth/2fa/status', [TwoFactorController::class, 'status']);

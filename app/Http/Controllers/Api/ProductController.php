@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreProductRequest;
 use App\Http\Requests\Api\UpdateProductRequest;
 use App\Models\Product;
+use App\Models\ProductCostHistory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -54,6 +55,20 @@ class ProductController extends Controller
         }
 
         $product = Product::create($data);
+
+        // Seed cost history with the initial cost (even if 0 — gives reports a baseline).
+        if (array_key_exists('cost_price', $data)) {
+            ProductCostHistory::create([
+                'tenant_id'          => $product->tenant_id,
+                'product_id'         => $product->id,
+                'previous_cost'      => null,
+                'cost_price'         => $product->cost_price ?? 0,
+                'source'             => 'initial',
+                'changed_by_user_id' => $request->user()?->id,
+                'notes'              => 'Set on product create',
+            ]);
+        }
+
         $product->load('category');
 
         return response()->json([
@@ -92,7 +107,26 @@ class ProductController extends Controller
 
         unset($data['remove_image']);
 
+        // Track cost changes — write a history row whenever cost_price moves
+        // by more than 0.01. Done before update() so we can read the previous cost.
+        $previousCost = (float) $product->cost_price;
+        $newCost      = array_key_exists('cost_price', $data) ? (float) $data['cost_price'] : null;
+        $costChanged  = $newCost !== null && abs($previousCost - $newCost) > 0.005;
+
         $product->update($data);
+
+        if ($costChanged) {
+            ProductCostHistory::create([
+                'tenant_id'          => $product->tenant_id,
+                'product_id'         => $product->id,
+                'previous_cost'      => $previousCost,
+                'cost_price'         => $newCost,
+                'source'             => 'manual',
+                'changed_by_user_id' => $request->user()?->id,
+                'notes'              => $request->input('cost_change_note'),
+            ]);
+        }
+
         $product->load('category');
 
         return response()->json([
@@ -102,21 +136,79 @@ class ProductController extends Controller
         ]);
     }
 
-    public function destroy(Product $product): JsonResponse
+    /** Cost-over-time for a product. */
+    public function costHistory(Product $product): JsonResponse
     {
-        if ($product->orderItems()->exists()) {
+        return response()->json([
+            'success' => true,
+            'message' => 'Cost history',
+            'data'    => $product->costHistory()->with('changedBy:id,name')->paginate(50),
+        ]);
+    }
+
+    public function destroy(\Illuminate\Http\Request $request, Product $product): JsonResponse
+    {
+        // Delete semantics:
+        //   no flag → try hard delete; 422 with can_archive hint if it has order history
+        //   ?archive=true → SMART: hard-delete when there's no order history (so the
+        //       product is truly gone); soft-delete (status=inactive) only when there
+        //       IS order history, so the audit trail keeps pointing at something
+        //   ?force=true → ignore everything, attempt hard delete (will fail if FK
+        //       enforcement is active and the product is still referenced)
+        $archive    = $request->boolean('archive');
+        $force      = $request->boolean('force');
+        $hasHistory = $product->orderItems()->exists();
+
+        // If history exists and the caller isn't forcing or archiving, refuse with
+        // an actionable error.
+        if ($hasHistory && !$archive && !$force) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot delete product that has been ordered',
-                'data'    => null,
+                'message' => 'This product has been ordered. Use Archive to mark it inactive (keeps order history), or Force Delete to wipe it.',
+                'data'    => ['can_archive' => true],
             ], 422);
+        }
+
+        // Soft-delete path: only when the product genuinely has order history.
+        // If there's NO history (e.g. user deleted all orders, or it was never
+        // sold), fall through to hard delete even with ?archive=true — that's
+        // what the user means when they click delete on an archived product.
+        if ($archive && $hasHistory) {
+            $product->update(['status' => 'inactive']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Product archived (marked inactive). Order history is preserved.',
+                'data'    => null,
+            ]);
         }
 
         if ($product->image) {
             Storage::disk('public')->delete($product->image);
         }
 
-        $product->delete();
+        try {
+            \DB::transaction(function () use ($product) {
+                // Wipe sibling-table references that don't have ON DELETE CASCADE
+                // so the product row can actually be removed. order_items is the
+                // only one we DON'T touch — its existence already gated this path.
+                $pid = $product->id;
+                \DB::table('purchase_order_items')->where('product_id', $pid)->delete();
+                \DB::table('branch_product')->where('product_id', $pid)->delete();
+                \DB::table('product_modifier_group')->where('product_id', $pid)->delete();
+                \DB::table('stock_adjustments')->where('product_id', $pid)->delete();
+                \DB::table('product_cost_history')->where('product_id', $pid)->delete();
+                $product->delete();
+            });
+        } catch (\Illuminate\Database\QueryException $e) {
+            if (str_contains($e->getMessage(), 'foreign key constraint')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product is referenced by orders. Use Archive to mark it inactive instead.',
+                    'data'    => ['can_archive' => true],
+                ], 422);
+            }
+            throw $e;
+        }
 
         return response()->json([
             'success' => true,

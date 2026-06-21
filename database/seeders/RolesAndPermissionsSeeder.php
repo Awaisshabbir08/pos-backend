@@ -33,7 +33,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'delivery_zones'  => ['view', 'create', 'update', 'delete'],
         'suppliers'       => ['view', 'create', 'update', 'delete'],
         'purchase_orders' => ['view', 'create', 'update', 'delete', 'receive'],
-        'time_entries'    => ['view', 'create'],
+        'time_entries'    => ['view', 'create', 'delete'],
         'fbr'             => ['view', 'retry'],
         'payroll'         => ['view', 'create', 'update', 'delete', 'pay'],
         'stock_adjustments' => ['view', 'create'],

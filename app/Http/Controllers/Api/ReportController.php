@@ -52,20 +52,45 @@ class ReportController extends Controller
         if ($userBranch) $itemsQ->where('orders.branch_id', $userBranch);
         elseif ($request->filled('branch_id')) $itemsQ->where('orders.branch_id', $request->branch_id);
 
+        // Top products + COGS / margin per product. We use the snapshotted
+        // unit_cost_at_sale when available; for legacy orders predating cost
+        // tracking we fall back to the product's current cost_price.
         $topProducts = (clone $itemsQ)
-            ->selectRaw('order_items.product_id, SUM(order_items.quantity) as qty, SUM(order_items.subtotal) as revenue')
+            ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
+            ->selectRaw('order_items.product_id,
+                         SUM(order_items.quantity) as qty,
+                         SUM(order_items.subtotal) as revenue,
+                         SUM(order_items.quantity * COALESCE(order_items.unit_cost_at_sale, products.cost_price, 0)) as cogs')
             ->groupBy('order_items.product_id')
             ->orderByDesc('qty')
             ->limit(10)
             ->with('product:id,name,sku')
             ->get()
-            ->map(fn($r) => [
-                'product_id'  => $r->product_id,
-                'name'        => $r->product?->name,
-                'sku'         => $r->product?->sku,
-                'qty_sold'    => (int) $r->qty,
-                'revenue'     => (float) $r->revenue,
-            ]);
+            ->map(function ($r) {
+                $revenue = (float) $r->revenue;
+                $cogs    = (float) $r->cogs;
+                $profit  = $revenue - $cogs;
+                return [
+                    'product_id'    => $r->product_id,
+                    'name'          => $r->product?->name,
+                    'sku'           => $r->product?->sku,
+                    'qty_sold'      => (int) $r->qty,
+                    'revenue'       => $revenue,
+                    'cogs'          => $cogs,
+                    'gross_profit'  => $profit,
+                    'margin_pct'    => $revenue > 0 ? round($profit / $revenue * 100, 2) : null,
+                ];
+            });
+
+        // Totals: revenue / COGS / gross profit across the period
+        $totalsRow = (clone $itemsQ)
+            ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
+            ->selectRaw('SUM(order_items.subtotal) as revenue,
+                         SUM(order_items.quantity * COALESCE(order_items.unit_cost_at_sale, products.cost_price, 0)) as cogs')
+            ->first();
+        $totalRevenue = (float) ($totalsRow->revenue ?? 0);
+        $totalCogs    = (float) ($totalsRow->cogs ?? 0);
+        $grossProfit  = $totalRevenue - $totalCogs;
 
         // By waiter (when applicable)
         $byWaiter = (clone $completed)
@@ -89,6 +114,10 @@ class ReportController extends Controller
                 'date_to'          => $to,
                 'orders_count'     => (clone $completed)->count(),
                 'gross_sales'      => (float) (clone $completed)->sum('total_amount'),
+                'item_revenue'     => $totalRevenue,
+                'total_cogs'       => $totalCogs,
+                'gross_profit'     => $grossProfit,
+                'margin_pct'       => $totalRevenue > 0 ? round($grossProfit / $totalRevenue * 100, 2) : null,
                 'total_tax'        => (float) (clone $completed)->sum('tax_amount'),
                 'total_service'    => (float) (clone $completed)->sum('service_charge_amount'),
                 'total_discount'   => (float) (clone $completed)->sum('discount_amount'),

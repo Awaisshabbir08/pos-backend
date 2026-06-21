@@ -88,27 +88,58 @@ class BranchController extends Controller
         return $data;
     }
 
-    public function destroy(Branch $branch): JsonResponse
+    public function destroy(\Illuminate\Http\Request $request, Branch $branch): JsonResponse
     {
-        $usageCount = $branch->waiters()->count()
-                    + $branch->riders()->count()
-                    + $branch->tables()->count()
-                    + $branch->orders()->count()
-                    + $branch->users()->count();
+        $force = $request->boolean('force');
 
-        if ($usageCount > 0) {
+        if (!$force) {
+            $usageCount = $branch->waiters()->count()
+                        + $branch->riders()->count()
+                        + $branch->tables()->count()
+                        + $branch->orders()->count()
+                        + $branch->users()->count();
+
+            if ($usageCount > 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot delete a branch that has staff, tables, orders or users assigned. Reassign them first, or add ?force=true to unassign them and delete anyway.',
+                    'data'    => null,
+                ], 422);
+            }
+
+            $branch->delete();
+
             return response()->json([
-                'success' => false,
-                'message' => 'Cannot delete a branch that has staff, tables, orders or users assigned. Reassign them first.',
+                'success' => true,
+                'message' => 'Branch deleted successfully',
                 'data'    => null,
-            ], 422);
+            ]);
         }
 
-        $branch->delete();
+        // Force delete: null out references on every table that points to this
+        // branch (staff move to "no branch", historical orders/cash keep their
+        // data but lose the link), drop branch-scoped per-product stock, then
+        // delete the branch row.
+        \DB::transaction(function () use ($branch) {
+            $bid = $branch->id;
+            \DB::table('waiters')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('riders')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('tables')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('users')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('orders')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('cash_registers')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('purchase_orders')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('delivery_zones')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('time_entries')->where('branch_id', $bid)->update(['branch_id' => null]);
+            \DB::table('stock_adjustments')->where('branch_id', $bid)->update(['branch_id' => null]);
+            // branch_product is a true pivot — its rows are meaningless without the branch
+            \DB::table('branch_product')->where('branch_id', $bid)->delete();
+            \DB::table('branches')->where('id', $bid)->delete();
+        });
 
         return response()->json([
             'success' => true,
-            'message' => 'Branch deleted successfully',
+            'message' => 'Branch force-deleted; staff, orders and other references were unassigned.',
             'data'    => null,
         ]);
     }

@@ -59,4 +59,32 @@ class TimeEntryController extends Controller
         ]);
         return response()->json(['success'=>true,'message'=>'Clocked out','data'=>$entry->fresh()]);
     }
+
+    /**
+     * Delete a time entry. Refuses if a finalized/paid payslip already counted
+     * this entry's hours (would create a payroll discrepancy). Use ?force=true
+     * to override — typical for fixing a mis-clocked entry on a draft payslip.
+     */
+    public function destroy(Request $request, TimeEntry $timeEntry): JsonResponse
+    {
+        $force = $request->boolean('force');
+
+        if (!$force) {
+            $coveringPayslip = \App\Models\Payslip::where('user_id', $timeEntry->user_id)
+                ->whereIn('status', ['finalized', 'paid'])
+                ->whereDate('period_start', '<=', $timeEntry->clock_in)
+                ->whereDate('period_end',   '>=', $timeEntry->clock_in)
+                ->first();
+            if ($coveringPayslip) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "This entry's hours were already counted in payslip #{$coveringPayslip->id} (status: {$coveringPayslip->status}). Add ?force=true to delete anyway — payroll will not be adjusted.",
+                    'data'    => null,
+                ], 422);
+            }
+        }
+
+        $timeEntry->delete();
+        return response()->json(['success'=>true,'message'=>'Time entry deleted','data'=>null]);
+    }
 }
