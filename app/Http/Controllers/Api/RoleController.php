@@ -14,9 +14,20 @@ class RoleController extends Controller
 {
     private const PROTECTED_ROLES = ['admin'];
 
-    public function index(): JsonResponse
+    public function index(\Illuminate\Http\Request $request): JsonResponse
     {
-        $roles = Role::with('permissions')->orderBy('name')->get();
+        $query = Role::with('permissions')->orderBy('name');
+
+        // The 'super-admin' role is platform-owner-only. Non-super-admin users
+        // (tenant admins, etc.) must never see it in the role list — otherwise
+        // they'd be able to assign it when creating users, which would let
+        // them escalate someone to platform-level access.
+        $user = $request->user();
+        if (!$user || !$user->hasRole('super-admin')) {
+            $query->where('name', '!=', 'super-admin');
+        }
+
+        $roles = $query->get();
         $counts = $this->userCountsByRole();
 
         return response()->json([

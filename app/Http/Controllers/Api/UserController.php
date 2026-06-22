@@ -50,6 +50,15 @@ class UserController extends Controller
     {
         $data = $request->validated();
 
+        // Only an existing super-admin can grant the super-admin role.
+        if ($data['role'] === 'super-admin' && !$request->user()?->hasRole('super-admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only a super-admin can assign the super-admin role.',
+                'data'    => null,
+            ], 403);
+        }
+
         $user = User::create([
             'name'           => $data['name'],
             'email'          => $data['email'],
@@ -94,6 +103,14 @@ class UserController extends Controller
         $user->update($fields);
 
         if (!empty($data['role'])) {
+            // Same role-elevation guard as on create.
+            if ($data['role'] === 'super-admin' && !$request->user()?->hasRole('super-admin')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only a super-admin can assign the super-admin role.',
+                    'data'    => null,
+                ], 403);
+            }
             $user->syncRoles([$data['role']]);
         }
 
