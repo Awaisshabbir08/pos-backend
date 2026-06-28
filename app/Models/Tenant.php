@@ -13,7 +13,7 @@ class Tenant extends Model
 
     protected $fillable = [
         'name', 'slug', 'contact_email', 'contact_phone',
-        'plan', 'currency', 'status', 'subscription_expires_at', 'notes',
+        'plan', 'plan_id', 'currency', 'status', 'subscription_expires_at', 'notes',
         'logo', 'receipt_header', 'receipt_footer',
         'fbr_enabled', 'fbr_ntn', 'fbr_pos_id', 'fbr_token', 'fbr_endpoint',
     ];
@@ -29,6 +29,11 @@ class Tenant extends Model
     public function branches(): HasMany  { return $this->hasMany(Branch::class); }
     public function products(): HasMany  { return $this->hasMany(Product::class); }
     public function orders(): HasMany    { return $this->hasMany(Order::class); }
+
+    public function plan(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Plan::class);
+    }
 
     /**
      * Tenant can log in / use the system?

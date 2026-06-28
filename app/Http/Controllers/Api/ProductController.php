@@ -15,7 +15,7 @@ class ProductController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $with = ['category'];
+        $with = ['category', 'variants', 'dealItems.product'];
         if ($request->boolean('with_modifiers')) {
             $with[] = 'modifierGroups.modifiers';
         }
@@ -49,12 +49,22 @@ class ProductController extends Controller
     public function store(StoreProductRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $variants = $data['variants'] ?? null;
+        $dealItems = $data['deal_items'] ?? null;
+        unset($data['variants'], $data['deal_items']);
 
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('products', 'public');
         }
 
         $product = Product::create($data);
+
+        if (is_array($variants)) {
+            $this->syncVariants($product, $variants);
+        }
+        if (is_array($dealItems)) {
+            $this->syncDealItems($product, $dealItems);
+        }
 
         // Seed cost history with the initial cost (even if 0 — gives reports a baseline).
         if (array_key_exists('cost_price', $data)) {
@@ -69,7 +79,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $product->load('category');
+        $product->load('category', 'variants', 'dealItems.product');
 
         return response()->json([
             'success' => true,
@@ -80,7 +90,7 @@ class ProductController extends Controller
 
     public function show(Product $product): JsonResponse
     {
-        $product->load(['category', 'modifierGroups.modifiers']);
+        $product->load(['category', 'modifierGroups.modifiers', 'variants', 'dealItems.product']);
 
         return response()->json([
             'success' => true,
@@ -92,6 +102,9 @@ class ProductController extends Controller
     public function update(UpdateProductRequest $request, Product $product): JsonResponse
     {
         $data = $request->validated();
+        $variants = $data['variants'] ?? null;
+        $dealItems = $data['deal_items'] ?? null;
+        unset($data['variants'], $data['deal_items']);
 
         if ($request->hasFile('image')) {
             if ($product->image) {
@@ -115,6 +128,15 @@ class ProductController extends Controller
 
         $product->update($data);
 
+        // Only touch variants/deal items when the caller actually sent the key,
+        // so a partial update (e.g. just the price) doesn't wipe them.
+        if (is_array($variants)) {
+            $this->syncVariants($product, $variants);
+        }
+        if (is_array($dealItems)) {
+            $this->syncDealItems($product, $dealItems);
+        }
+
         if ($costChanged) {
             ProductCostHistory::create([
                 'tenant_id'          => $product->tenant_id,
@@ -127,13 +149,78 @@ class ProductController extends Controller
             ]);
         }
 
-        $product->load('category');
+        $product->load('category', 'variants', 'dealItems.product');
 
         return response()->json([
             'success' => true,
             'message' => 'Product updated successfully',
             'data'    => $product,
         ]);
+    }
+
+    /**
+     * Upsert/delete a product's variants to match the supplied array.
+     * Each item: { id?, name, price, sort_order?, status? }. Rows whose IDs
+     * are absent from the payload are deleted (and their order_items keep a
+     * snapshot via order_items.variant_name, so history is unaffected).
+     */
+    private function syncVariants(Product $product, array $variants): void
+    {
+        $keepIds = [];
+        foreach (array_values($variants) as $i => $v) {
+            $name = trim((string) ($v['name'] ?? ''));
+            if ($name === '') {
+                continue; // ignore blank rows from the form
+            }
+            $attrs = [
+                'name'       => $name,
+                'price'      => (float) ($v['price'] ?? 0),
+                'sort_order' => (int) ($v['sort_order'] ?? $i),
+                'status'     => ($v['status'] ?? 'active') === 'inactive' ? 'inactive' : 'active',
+            ];
+
+            $id = isset($v['id']) ? (int) $v['id'] : 0;
+            $existing = $id ? $product->variants()->whereKey($id)->first() : null;
+            if ($existing) {
+                $existing->update($attrs);
+                $keepIds[] = $existing->id;
+            } else {
+                $created = $product->variants()->create($attrs);
+                $keepIds[] = $created->id;
+            }
+        }
+
+        // Remove variants the user deleted in the form.
+        $product->variants()->whereNotIn('id', $keepIds ?: [0])->delete();
+    }
+
+    /**
+     * Replace a deal's component lines with the supplied array.
+     * Each item: { product_id, quantity }. A deal can't contain another deal.
+     */
+    private function syncDealItems(Product $product, array $dealItems): void
+    {
+        // Simplest correct approach: rebuild the component list each save.
+        $product->dealItems()->delete();
+
+        $sort = 0;
+        foreach (array_values($dealItems) as $row) {
+            $componentId = (int) ($row['product_id'] ?? 0);
+            $qty = max(1, (int) ($row['quantity'] ?? 1));
+            if ($componentId <= 0 || $componentId === $product->id) {
+                continue; // skip blanks / self-reference
+            }
+            // Don't allow nesting a deal inside a deal.
+            $component = Product::find($componentId);
+            if (!$component || $component->is_deal) {
+                continue;
+            }
+            $product->dealItems()->create([
+                'product_id' => $componentId,
+                'quantity'   => $qty,
+                'sort_order' => $sort++,
+            ]);
+        }
     }
 
     /** Cost-over-time for a product. */
@@ -195,6 +282,8 @@ class ProductController extends Controller
                 \DB::table('purchase_order_items')->where('product_id', $pid)->delete();
                 \DB::table('branch_product')->where('product_id', $pid)->delete();
                 \DB::table('product_modifier_group')->where('product_id', $pid)->delete();
+                \DB::table('product_variants')->where('product_id', $pid)->delete();
+                \DB::table('deal_items')->where('deal_product_id', $pid)->orWhere('product_id', $pid)->delete();
                 \DB::table('stock_adjustments')->where('product_id', $pid)->delete();
                 \DB::table('product_cost_history')->where('product_id', $pid)->delete();
                 $product->delete();

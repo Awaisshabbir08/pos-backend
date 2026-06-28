@@ -26,6 +26,7 @@ class Product extends Model
         'stock_quantity',
         'reorder_point',
         'status',
+        'is_deal',
     ];
 
     protected $casts = [
@@ -33,6 +34,7 @@ class Product extends Model
         'cost_price'     => 'decimal:2',
         'stock_quantity' => 'integer',
         'reorder_point'  => 'integer',
+        'is_deal'        => 'boolean',
     ];
 
     protected $appends = ['image_url'];
@@ -57,6 +59,17 @@ class Product extends Model
     public function modifierGroups(): BelongsToMany
     {
         return $this->belongsToMany(ModifierGroup::class, 'product_modifier_group');
+    }
+
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** Component lines when this product is a deal/combo (is_deal = true). */
+    public function dealItems(): HasMany
+    {
+        return $this->hasMany(DealItem::class, 'deal_product_id')->orderBy('sort_order')->orderBy('id');
     }
 
     public function costHistory(): HasMany

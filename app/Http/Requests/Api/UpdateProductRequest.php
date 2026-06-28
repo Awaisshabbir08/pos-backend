@@ -30,6 +30,18 @@ class UpdateProductRequest extends FormRequest
             'stock_quantity' => 'nullable|integer|min:0',
             'reorder_point'  => 'nullable|integer|min:0',
             'status'         => 'nullable|in:active,inactive',
+            // Optional sized variants (e.g. Small/Medium/Large), each with its own price.
+            'variants'              => 'sometimes|array',
+            'variants.*.id'         => 'nullable|integer',
+            'variants.*.name'       => 'nullable|string|max:100',
+            'variants.*.price'      => 'nullable|numeric|min:0',
+            'variants.*.sort_order' => 'nullable|integer|min:0',
+            'variants.*.status'     => 'nullable|in:active,inactive',
+            // Deal / combo: a fixed-price bundle of component products.
+            'is_deal'                 => 'sometimes|boolean',
+            'deal_items'              => 'sometimes|array',
+            'deal_items.*.product_id' => 'nullable|integer|exists:products,id',
+            'deal_items.*.quantity'   => 'nullable|integer|min:1',
         ];
     }
 

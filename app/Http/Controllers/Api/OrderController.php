@@ -63,16 +63,39 @@ class OrderController extends Controller
 
             foreach ($items as $item) {
                 $product = Product::findOrFail($item['product_id']);
-                $available = $product->stockFor($branchId);
 
-                if ($available < $item['quantity']) {
-                    DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Insufficient stock for product: {$product->name}. Available: {$available}",
-                        'data'    => null,
-                    ], 422);
+                // Deals/combos are not individually stock-tracked (their component
+                // products are what's stocked), so skip the stock gate for them.
+                if (!$product->is_deal) {
+                    $available = $product->stockFor($branchId);
+                    if ($available < $item['quantity']) {
+                        DB::rollBack();
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Insufficient stock for product: {$product->name}. Available: {$available}",
+                            'data'    => null,
+                        ], 422);
+                    }
                 }
+
+                // Resolve the chosen variant (e.g. Small/Medium/Large). When set,
+                // the variant's price REPLACES the product base price as the line
+                // base; modifiers are then added on top of it.
+                $variant = null;
+                if (!empty($item['product_variant_id'])) {
+                    $variant = \App\Models\ProductVariant::where('product_id', $product->id)
+                        ->whereKey((int) $item['product_variant_id'])
+                        ->first();
+                    if (!$variant) {
+                        DB::rollBack();
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Selected variant is not available for product: {$product->name}",
+                            'data'    => null,
+                        ], 422);
+                    }
+                }
+                $basePrice = $variant ? (float) $variant->price : (float) $product->price;
 
                 // Resolve picked modifiers (if any) and add their price delta to the line price.
                 $pickedModifiers = [];
@@ -88,12 +111,14 @@ class OrderController extends Controller
                     }
                 }
 
-                $unitPriceWithMods = (float) $product->price + $modifierTotal;
+                $unitPriceWithMods = $basePrice + $modifierTotal;
                 $subtotal = $unitPriceWithMods * $item['quantity'];
                 $totalAmount += $subtotal;
 
                 $orderItemsData[] = [
                     'product_id'         => $product->id,
+                    'product_variant_id' => $variant?->id,
+                    'variant_name'       => $variant?->name,
                     'quantity'           => $item['quantity'],
                     'unit_price'         => $unitPriceWithMods,
                     // Snapshot the product's CURRENT cost at sale time, so historical
@@ -476,7 +501,8 @@ class OrderController extends Controller
     {
         foreach ($items as $item) {
             $product = Product::find($item['product_id']);
-            if ($product) $product->decrementStockFor($branchId, (int) $item['quantity']);
+            // Deals aren't stock-tracked themselves — skip them.
+            if ($product && !$product->is_deal) $product->decrementStockFor($branchId, (int) $item['quantity']);
         }
     }
 
@@ -485,7 +511,8 @@ class OrderController extends Controller
         $branchId = $order->branch_id;
         foreach ($order->orderItems as $item) {
             $product = Product::find($item->product_id);
-            if ($product) $product->incrementStockFor($branchId, (int) $item->quantity);
+            // Deals weren't deducted, so don't restore them.
+            if ($product && !$product->is_deal) $product->incrementStockFor($branchId, (int) $item->quantity);
         }
     }
 

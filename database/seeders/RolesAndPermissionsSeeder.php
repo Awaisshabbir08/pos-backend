@@ -37,6 +37,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'fbr'             => ['view', 'retry'],
         'payroll'         => ['view', 'create', 'update', 'delete', 'pay'],
         'stock_adjustments' => ['view', 'create'],
+        'plans'             => ['view', 'create', 'update', 'delete'],   // super-admin only
     ];
 
     public function run(): void
@@ -52,9 +53,14 @@ class RolesAndPermissionsSeeder extends Seeder
         $super = Role::firstOrCreate(['name' => 'super-admin', 'guard_name' => 'web']);
         $super->syncPermissions(Permission::all());
 
-        // Admin (Store Admin): everything inside their tenant EXCEPT managing other tenants.
+        // Admin (Store Admin): everything inside their tenant EXCEPT managing other tenants
+        // and EXCEPT managing plans (plans are a platform-level concern — super-admin only).
         $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        $admin->syncPermissions(Permission::where('name', 'not like', 'tenants.%')->get());
+        $admin->syncPermissions(
+            Permission::where('name', 'not like', 'tenants.%')
+                ->where('name', 'not like', 'plans.%')
+                ->get()
+        );
 
         // Cashier: only POS-relevant view + order creation
         $cashier = Role::firstOrCreate(['name' => 'cashier', 'guard_name' => 'web']);

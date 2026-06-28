@@ -15,6 +15,8 @@ class OrderItem extends Model
         'tenant_id',
         'order_id',
         'product_id',
+        'product_variant_id',
+        'variant_name',
         'quantity',
         'unit_price',
         'unit_cost_at_sale',
@@ -36,6 +38,11 @@ class OrderItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function productVariant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class);
     }
 
     public function modifiers(): \Illuminate\Database\Eloquent\Relations\HasMany

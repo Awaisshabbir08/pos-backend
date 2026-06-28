@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\ModifierGroupController;
 use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\PlanController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\StockAdjustmentController;
@@ -148,6 +149,18 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:riders.create')->post('/riders', [RiderController::class, 'store']);
     Route::middleware('permission:riders.update')->put('/riders/{rider}', [RiderController::class, 'update']);
     Route::middleware('permission:riders.delete')->delete('/riders/{rider}', [RiderController::class, 'destroy']);
+
+    // Subscription Plans (super-admin only — platform-level pricing config).
+    Route::middleware('permission:plans.view')->group(function () {
+        Route::get('/plans', [PlanController::class, 'index']);
+        Route::get('/plans/{plan}', [PlanController::class, 'show']);
+        Route::post('/plans/preview', [PlanController::class, 'preview']);
+    });
+    Route::middleware('permission:plans.create')->post('/plans', [PlanController::class, 'store']);
+    Route::middleware('permission:plans.update')->put('/plans/{plan}', [PlanController::class, 'update']);
+    Route::middleware('permission:plans.delete')->delete('/plans/{plan}', [PlanController::class, 'destroy']);
+    // Tenant billing preview — any authenticated user can see their own tenant's bill
+    Route::get('/tenants/{tenant}/billing', [PlanController::class, 'forTenant']);
 
     // Tenants (super-admin only — tenants.* permissions are granted only to super-admin role)
     Route::middleware('permission:tenants.view')->group(function () {
