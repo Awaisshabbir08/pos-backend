@@ -19,10 +19,13 @@ class UpdateCustomerRequest extends FormRequest
         $customerId = $this->route('customer')?->id ?? $this->route('customer');
 
         return [
-            'name'    => 'sometimes|required|string|max:255',
-            'email'   => ['nullable', 'email', Rule::unique('customers', 'email')->ignore($customerId)],
-            'phone'   => 'nullable|string|max:50',
-            'address' => 'nullable|string',
+            'name'          => 'sometimes|required|string|max:255',
+            'email'         => ['nullable', 'email', Rule::unique('customers', 'email')->ignore($customerId)],
+            'phone'         => 'nullable|string|max:50',
+            'address'       => 'nullable|string',
+            'city'          => 'nullable|string|max:120',
+            'discount_type' => 'nullable|in:percent,fixed',
+            'discount'      => 'nullable|numeric|min:0',
         ];
     }
 

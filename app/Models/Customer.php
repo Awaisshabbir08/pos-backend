@@ -17,6 +17,13 @@ class Customer extends Model
         'email',
         'phone',
         'address',
+        'city',
+        'discount_type',
+        'discount',
+    ];
+
+    protected $casts = [
+        'discount' => 'decimal:2',
     ];
 
     public function orders(): HasMany

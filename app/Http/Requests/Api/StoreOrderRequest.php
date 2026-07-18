@@ -41,6 +41,7 @@ class StoreOrderRequest extends FormRequest
             'items.*.product_id'         => 'required|exists:products,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity'       => 'required|integer|min:1',
+            'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.modifiers'      => 'sometimes|array',
             'items.*.modifiers.*'    => 'integer|exists:modifiers,id',
             'coupon_code'            => 'nullable|string|max:64',

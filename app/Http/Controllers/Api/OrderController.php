@@ -112,8 +112,13 @@ class OrderController extends Controller
                 }
 
                 $unitPriceWithMods = $basePrice + $modifierTotal;
-                $subtotal = $unitPriceWithMods * $item['quantity'];
-                $totalAmount += $subtotal;
+                $lineGross = $unitPriceWithMods * $item['quantity'];
+
+                // Per-line discount (percentage of the line's gross), clamped 0–100.
+                $discountPercent = max(0.0, min(100.0, (float) ($item['discount_percent'] ?? 0)));
+                $lineDiscount    = round($lineGross * $discountPercent / 100, 2);
+                $subtotal        = round($lineGross - $lineDiscount, 2);
+                $totalAmount    += $subtotal;
 
                 $orderItemsData[] = [
                     'product_id'         => $product->id,
@@ -121,6 +126,8 @@ class OrderController extends Controller
                     'variant_name'       => $variant?->name,
                     'quantity'           => $item['quantity'],
                     'unit_price'         => $unitPriceWithMods,
+                    'discount_percent'   => $discountPercent,
+                    'discount_amount'    => $lineDiscount,
                     // Snapshot the product's CURRENT cost at sale time, so historical
                     // COGS / margin reports stay stable when cost changes later.
                     'unit_cost_at_sale'  => (float) $product->cost_price,

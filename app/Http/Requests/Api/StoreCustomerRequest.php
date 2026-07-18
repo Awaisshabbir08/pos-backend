@@ -16,10 +16,13 @@ class StoreCustomerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'    => 'required|string|max:255',
-            'email'   => 'nullable|email|unique:customers,email',
-            'phone'   => 'nullable|string|max:50',
-            'address' => 'nullable|string',
+            'name'          => 'required|string|max:255',
+            'email'         => 'nullable|email|unique:customers,email',
+            'phone'         => 'nullable|string|max:50',
+            'address'       => 'nullable|string',
+            'city'          => 'nullable|string|max:120',
+            'discount_type' => 'nullable|in:percent,fixed',
+            'discount'      => 'nullable|numeric|min:0',
         ];
     }
 
