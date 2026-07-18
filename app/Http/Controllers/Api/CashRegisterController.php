@@ -55,26 +55,30 @@ class CashRegisterController extends Controller
     {
         $request->validate([
             'branch_id'    => 'nullable|exists:branches,id',
+            'counter_id'   => 'nullable|exists:counters,id',
             'opening_cash' => 'required|numeric|min:0',
             'notes'        => 'nullable|string|max:500',
         ]);
 
         $branchId = $request->user()?->branch_id ?? $request->input('branch_id');
 
-        // Only one open shift per branch at a time.
+        // Only one open shift per counter (or per branch when no counter) at a time.
+        $counterId = $request->input('counter_id');
         $existing = CashRegister::where('status', 'open')
             ->when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->when($counterId, fn($q) => $q->where('counter_id', $counterId))
             ->first();
         if ($existing) {
             return response()->json([
                 'success' => false,
-                'message' => 'A shift is already open for this branch. Close it before opening a new one.',
+                'message' => 'A shift is already open for this ' . ($counterId ? 'counter' : 'branch') . '. Close it before opening a new one.',
                 'data'    => $existing,
             ], 422);
         }
 
         $reg = CashRegister::create([
             'branch_id'         => $branchId,
+            'counter_id'        => $counterId,
             'opened_by_user_id' => $request->user()->id,
             'opened_at'         => now(),
             'opening_cash'      => $request->input('opening_cash'),

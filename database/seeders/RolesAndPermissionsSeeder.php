@@ -38,6 +38,9 @@ class RolesAndPermissionsSeeder extends Seeder
         'payroll'         => ['view', 'create', 'update', 'delete', 'pay'],
         'stock_adjustments' => ['view', 'create'],
         'plans'             => ['view', 'create', 'update', 'delete'],   // super-admin only
+        'counters'          => ['view', 'create', 'update', 'delete'],
+        'raw_materials'     => ['view', 'create', 'update', 'delete'],
+        'bom'               => ['view', 'update'],
     ];
 
     public function run(): void
@@ -76,6 +79,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'tables.view',
             'riders.view',
             'branches.view',
+            'counters.view',
             'cash.view', 'cash.open', 'cash.close',
             // Cashier needs to read coupons/modifiers/zones to apply them at POS,
             // and create/view their own time entries.

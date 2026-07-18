@@ -24,6 +24,7 @@ class StoreOrderRequest extends FormRequest
 
         return [
             'branch_id'              => 'nullable|exists:branches,id',
+            'counter_id'             => 'nullable|exists:counters,id',
             'customer_id'            => 'nullable|exists:customers,id',
             'service_type'           => 'required|in:dine_in,take_away,delivery',
             'waiter_id'              => [$this->requireForDineInOrTakeaway($type), 'nullable', 'exists:waiters,id'],

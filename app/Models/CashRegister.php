@@ -12,7 +12,7 @@ class CashRegister extends Model
     use HasFactory, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'branch_id', 'opened_by_user_id', 'closed_by_user_id',
+        'tenant_id', 'branch_id', 'counter_id', 'opened_by_user_id', 'closed_by_user_id',
         'opened_at', 'closed_at',
         'opening_cash', 'actual_cash', 'expected_cash', 'cash_difference',
         'notes', 'status',
@@ -28,6 +28,7 @@ class CashRegister extends Model
     ];
 
     public function branch(): BelongsTo   { return $this->belongsTo(Branch::class); }
+    public function counter(): BelongsTo  { return $this->belongsTo(Counter::class); }
     public function openedBy(): BelongsTo { return $this->belongsTo(User::class, 'opened_by_user_id'); }
     public function closedBy(): BelongsTo { return $this->belongsTo(User::class, 'closed_by_user_id'); }
 }

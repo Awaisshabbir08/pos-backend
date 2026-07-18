@@ -106,6 +106,75 @@ class ReportController extends Controller
                 'total'     => (float) $r->total,
             ]);
 
+        // By counter (POS station)
+        $byCounter = (clone $completed)
+            ->selectRaw('counter_id, COUNT(*) as orders, SUM(total_amount) as total')
+            ->groupBy('counter_id')
+            ->with('counter:id,name')
+            ->get()
+            ->map(fn($r) => [
+                'counter_id' => $r->counter_id,
+                'name'       => $r->counter?->name ?? 'Unassigned',
+                'orders'     => (int) $r->orders,
+                'total'      => (float) $r->total,
+            ]);
+
+        // By cashier (user who created the sale)
+        $byCashier = (clone $completed)
+            ->selectRaw('created_by_user_id, COUNT(*) as orders, SUM(total_amount) as total')
+            ->groupBy('created_by_user_id')
+            ->with('createdBy:id,name')
+            ->get()
+            ->map(fn($r) => [
+                'user_id' => $r->created_by_user_id,
+                'name'    => $r->createdBy?->name ?? '—',
+                'orders'  => (int) $r->orders,
+                'total'   => (float) $r->total,
+            ]);
+
+        // Cash vs Credit — credit = any non-cash tender (card/wallet/bank/other)
+        $cashRow   = (clone $completed)->where('payment_method', 'cash')
+            ->selectRaw('COUNT(*) as orders, SUM(total_amount) as total')->first();
+        $creditRow = (clone $completed)->where('payment_method', '!=', 'cash')
+            ->selectRaw('COUNT(*) as orders, SUM(total_amount) as total')->first();
+        $cashVsCredit = [
+            'cash'   => ['orders' => (int) ($cashRow->orders ?? 0),   'total' => (float) ($cashRow->total ?? 0)],
+            'credit' => ['orders' => (int) ($creditRow->orders ?? 0), 'total' => (float) ($creditRow->total ?? 0)],
+        ];
+
+        // By category (from sold line items)
+        $byCategory = (clone $itemsQ)
+            ->leftJoin('products as p2', 'p2.id', '=', 'order_items.product_id')
+            ->leftJoin('categories', 'categories.id', '=', 'p2.category_id')
+            ->selectRaw('categories.name as category, SUM(order_items.quantity) as qty, SUM(order_items.subtotal) as revenue')
+            ->groupBy('categories.name')
+            ->orderByDesc('revenue')
+            ->get()
+            ->map(fn($r) => [
+                'category' => $r->category ?? 'Uncategorized',
+                'qty_sold' => (int) $r->qty,
+                'revenue'  => (float) $r->revenue,
+            ]);
+
+        // Full item-wise breakdown (all items, not just top 10)
+        $byItem = (clone $itemsQ)
+            ->selectRaw('order_items.product_id,
+                         SUM(order_items.quantity) as qty,
+                         SUM(order_items.subtotal) as revenue,
+                         SUM(order_items.discount_amount) as discount')
+            ->groupBy('order_items.product_id')
+            ->orderByDesc('revenue')
+            ->with('product:id,name,sku')
+            ->get()
+            ->map(fn($r) => [
+                'product_id' => $r->product_id,
+                'name'       => $r->product?->name,
+                'sku'        => $r->product?->sku,
+                'qty_sold'   => (int) $r->qty,
+                'discount'   => (float) $r->discount,
+                'revenue'    => (float) $r->revenue,
+            ]);
+
         return response()->json([
             'success' => true,
             'message' => 'Sales report',
@@ -128,7 +197,72 @@ class ReportController extends Controller
                 'by_payment'       => $byPayment,
                 'by_service_type'  => $byServiceType,
                 'by_waiter'        => $byWaiter,
+                'by_counter'       => $byCounter,
+                'by_cashier'       => $byCashier,
+                'by_category'      => $byCategory,
+                'by_item'          => $byItem,
+                'cash_vs_credit'   => $cashVsCredit,
                 'top_products'     => $topProducts,
+            ],
+        ]);
+    }
+
+    /**
+     * Cash report — opening / closing cash per shift (cash register) plus a
+     * summary of expected vs actual and the period's cash sales.
+     */
+    public function cash(Request $request): JsonResponse
+    {
+        $from = $request->input('date_from') ?: now()->subDays(30)->toDateString();
+        $to   = $request->input('date_to')   ?: now()->toDateString();
+
+        $q = \App\Models\CashRegister::query()
+            ->with(['branch:id,name', 'counter:id,name', 'openedBy:id,name', 'closedBy:id,name'])
+            ->whereBetween('opened_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
+
+        $userBranch = $request->user()?->branch_id;
+        if ($userBranch) $q->where('branch_id', $userBranch);
+        elseif ($request->filled('branch_id')) $q->where('branch_id', $request->branch_id);
+        if ($request->filled('counter_id')) $q->where('counter_id', $request->counter_id);
+
+        $registers = (clone $q)->orderByDesc('opened_at')->get()->map(fn($r) => [
+            'id'              => $r->id,
+            'branch'          => $r->branch?->name,
+            'counter'         => $r->counter?->name ?? '—',
+            'opened_by'       => $r->openedBy?->name,
+            'closed_by'       => $r->closedBy?->name,
+            'opened_at'       => $r->opened_at?->toDateTimeString(),
+            'closed_at'       => $r->closed_at?->toDateTimeString(),
+            'opening_cash'    => (float) $r->opening_cash,
+            'expected_cash'   => $r->expected_cash !== null ? (float) $r->expected_cash : null,
+            'actual_cash'     => $r->actual_cash !== null ? (float) $r->actual_cash : null,
+            'cash_difference' => $r->cash_difference !== null ? (float) $r->cash_difference : null,
+            'status'          => $r->status,
+        ]);
+
+        // Cash sales in the period (orders settled with cash)
+        $cashSales = (float) $this->baseQuery($request)
+            ->where('status', 'completed')
+            ->where('payment_method', 'cash')
+            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->sum('total_amount');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cash report',
+            'data'    => [
+                'date_from'      => $from,
+                'date_to'        => $to,
+                'registers'      => $registers,
+                'summary'        => [
+                    'shifts'            => $registers->count(),
+                    'open_shifts'       => $registers->where('status', 'open')->count(),
+                    'total_opening'     => round($registers->sum('opening_cash'), 2),
+                    'total_expected'    => round($registers->sum(fn($r) => $r['expected_cash'] ?? 0), 2),
+                    'total_actual'      => round($registers->sum(fn($r) => $r['actual_cash'] ?? 0), 2),
+                    'total_difference'  => round($registers->sum(fn($r) => $r['cash_difference'] ?? 0), 2),
+                    'cash_sales'        => round($cashSales, 2),
+                ],
             ],
         ]);
     }

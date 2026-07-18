@@ -14,6 +14,8 @@ class Order extends Model
     protected $fillable = [
         'tenant_id',
         'branch_id',
+        'counter_id',
+        'created_by_user_id',
         'customer_id',
         'waiter_id',
         'table_id',
@@ -66,6 +68,16 @@ class Order extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function counter(): BelongsTo
+    {
+        return $this->belongsTo(Counter::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
     public function waiter(): BelongsTo

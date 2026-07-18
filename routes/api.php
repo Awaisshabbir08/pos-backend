@@ -5,9 +5,12 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\BranchController;
+use App\Http\Controllers\Api\BomController;
 use App\Http\Controllers\Api\CashRegisterController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CounterController;
 use App\Http\Controllers\Api\CouponController;
+use App\Http\Controllers\Api\RawMaterialController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DeliveryZoneController;
@@ -185,8 +188,33 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:cash.close')->post('/cash-registers/{cashRegister}/close', [CashRegisterController::class, 'close']);
 
     // Reports
-    Route::middleware('permission:reports.view')->get('/reports/sales', [ReportController::class, 'sales']);
+    Route::middleware('permission:reports.view')->group(function () {
+        Route::get('/reports/sales', [ReportController::class, 'sales']);
+        Route::get('/reports/cash', [ReportController::class, 'cash']);
+    });
     Route::middleware('permission:reports.export')->get('/reports/sales/export', [ReportController::class, 'exportSales']);
+
+    // Counters (POS stations)
+    Route::middleware('permission:counters.view')->group(function () {
+        Route::get('/counters', [CounterController::class, 'index']);
+        Route::get('/counters/{counter}', [CounterController::class, 'show']);
+    });
+    Route::middleware('permission:counters.create')->post('/counters', [CounterController::class, 'store']);
+    Route::middleware('permission:counters.update')->put('/counters/{counter}', [CounterController::class, 'update']);
+    Route::middleware('permission:counters.delete')->delete('/counters/{counter}', [CounterController::class, 'destroy']);
+
+    // Raw materials (inventory for BOM)
+    Route::middleware('permission:raw_materials.view')->group(function () {
+        Route::get('/raw-materials', [RawMaterialController::class, 'index']);
+        Route::get('/raw-materials/{rawMaterial}', [RawMaterialController::class, 'show']);
+    });
+    Route::middleware('permission:raw_materials.create')->post('/raw-materials', [RawMaterialController::class, 'store']);
+    Route::middleware('permission:raw_materials.update')->put('/raw-materials/{rawMaterial}', [RawMaterialController::class, 'update']);
+    Route::middleware('permission:raw_materials.delete')->delete('/raw-materials/{rawMaterial}', [RawMaterialController::class, 'destroy']);
+
+    // Bill of materials (a product's recipe)
+    Route::middleware('permission:bom.view')->get('/products/{product}/bom', [BomController::class, 'index']);
+    Route::middleware('permission:bom.update')->put('/products/{product}/bom', [BomController::class, 'sync']);
 
     // Audit log
     Route::middleware('permission:audit.view')->get('/audit-logs', [AuditLogController::class, 'index']);

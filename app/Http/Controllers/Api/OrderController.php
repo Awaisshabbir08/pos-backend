@@ -186,6 +186,8 @@ class OrderController extends Controller
 
             $order = Order::create([
                 'branch_id'             => $branchId,
+                'counter_id'            => $request->input('counter_id'),
+                'created_by_user_id'    => $request->user()?->id,
                 'customer_id'           => $request->input('customer_id'),
                 'waiter_id'             => $serviceType !== 'delivery' ? $request->input('waiter_id') : null,
                 'table_id'              => $serviceType === 'dine_in' ? $request->input('table_id') : null,
@@ -251,6 +253,7 @@ class OrderController extends Controller
             // until they're resumed and paid — common POS behaviour.
             if (!$hold) {
                 $this->deductStock($items, $branchId);
+                $this->consumeBom($items);
                 if ($coupon) $coupon->increment('used_count');
             }
 
@@ -303,6 +306,7 @@ class OrderController extends Controller
         // Restore stock if order is cancelled (legacy path; voids go through the dedicated endpoint)
         if ($request->input('status') === 'cancelled' && $previousStatus !== 'cancelled') {
             $this->restoreStock($order);
+            if ($previousStatus === 'completed') $this->restoreBom($order);
         }
 
         $order->load(['branch', 'customer', 'waiter', 'table', 'rider', 'orderItems.product']);
@@ -334,6 +338,7 @@ class OrderController extends Controller
             // we don't leak inventory.
             if ($force && $order->status === 'completed') {
                 $this->restoreStock($order);
+                $this->restoreBom($order);
             }
             // Remove children explicitly so MySQL FK ordering can't cause a 500.
             \DB::table('order_item_modifiers')->whereIn(
@@ -385,6 +390,7 @@ class OrderController extends Controller
                 'product_id' => $i->product_id, 'quantity' => $i->quantity
             ])->toArray();
             $this->deductStock($items, $order->branch_id);
+            $this->consumeBom($items);
 
             // Count the coupon usage now that the held order is actually paid
             if ($order->coupon_id && $order->coupon) {
@@ -419,6 +425,7 @@ class OrderController extends Controller
             // Restock if the order had deducted from stock
             if (in_array($order->status, ['completed'])) {
                 $this->restoreStock($order);
+                $this->restoreBom($order);
             }
 
             $order->update([
@@ -455,6 +462,7 @@ class OrderController extends Controller
         DB::beginTransaction();
         try {
             $this->restoreStock($order);
+            $this->restoreBom($order);
             $order->update([
                 'status'          => 'refunded',
                 'refunded_at'     => now(),
@@ -510,6 +518,40 @@ class OrderController extends Controller
             $product = Product::find($item['product_id']);
             // Deals aren't stock-tracked themselves — skip them.
             if ($product && !$product->is_deal) $product->decrementStockFor($branchId, (int) $item['quantity']);
+        }
+    }
+
+    /**
+     * Consume raw materials per each sold product's recipe (BOM).
+     * quantity_consumed = recipe_quantity * units_sold. Products without a
+     * recipe simply consume nothing.
+     */
+    private function consumeBom(array $items): void
+    {
+        foreach ($items as $item) {
+            $product = Product::with('bomItems')->find($item['product_id']);
+            if (!$product) continue;
+            foreach ($product->bomItems as $line) {
+                $used = (float) $line->quantity * (int) $item['quantity'];
+                if ($used <= 0) continue;
+                \App\Models\RawMaterial::whereKey($line->raw_material_id)
+                    ->decrement('stock_quantity', $used);
+            }
+        }
+    }
+
+    /** Return consumed raw materials to stock (on void / refund). */
+    private function restoreBom(Order $order): void
+    {
+        foreach ($order->orderItems as $item) {
+            $product = Product::with('bomItems')->find($item->product_id);
+            if (!$product) continue;
+            foreach ($product->bomItems as $line) {
+                $used = (float) $line->quantity * (int) $item->quantity;
+                if ($used <= 0) continue;
+                \App\Models\RawMaterial::whereKey($line->raw_material_id)
+                    ->increment('stock_quantity', $used);
+            }
         }
     }
 

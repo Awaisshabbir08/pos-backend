@@ -72,6 +72,12 @@ class Product extends Model
         return $this->hasMany(DealItem::class, 'deal_product_id')->orderBy('sort_order')->orderBy('id');
     }
 
+    /** Recipe / bill of materials — raw materials consumed to make this product. */
+    public function bomItems(): HasMany
+    {
+        return $this->hasMany(BomItem::class);
+    }
+
     public function costHistory(): HasMany
     {
         return $this->hasMany(ProductCostHistory::class)->orderByDesc('created_at');
